@@ -1,0 +1,23 @@
+{
+  "name": "actualizar-egresados",
+  "version": "1.0.0",
+  "description": "Script para actualizar o insertar información de egresados desde Excel a MySQL",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "excel",
+    "mysql",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mysql2": "^3.6.1",
+    "xlsx": "^0.18.5",
+    "dotenv": "^16.3.1",
+    "prompt-sync": "^4.2.0",
+    "fs-extra": "^11.1.1"
+  }
+}
