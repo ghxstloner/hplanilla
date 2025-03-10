@@ -276,7 +276,7 @@ async function main() {
           ficha: ficha,
           estado: 'Egresado', // Valor en nompersonal para egresados
           apenom: fila[colNombre] || '',
-          sexo: colSexo ? (String(fila[colSexo] || '').includes('Masculino') ? 'M' : 'F') : '',
+          sexo: colSexo ? (String(fila[colSexo] || '').includes('Masculino') ? 'Masculino' : 'Femenino') : '',
           estado_civil: colEstadoCivil ? convertirEstadoCivil(fila[colEstadoCivil]) : '',
           direccion: colDireccion ? (fila[colDireccion] || '') : '',
           fecnac: colFechaNac ? convertirFecha(fila[colFechaNac]) : null,
