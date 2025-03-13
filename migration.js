@@ -12,7 +12,7 @@ function obtenerCredenciales() {
   console.log('=== ACTUALIZACIÓN DE EGRESADOS EN NOMPERSONAL ===');
   
   const usuario = 'root';
-  const password = 'root';
+  const password = prompt('Ingrese la contraseña de la base de datos: ', { echo: '*' });
   let baseDatos = 'hotelnhp_planilla';
   
   console.log(`\nConectando a la base de datos ${baseDatos} con usuario ${usuario}...`);
@@ -29,27 +29,224 @@ function obtenerCredenciales() {
 function convertirFecha(fechaExcel) {
   if (!fechaExcel) return null;
   
-  // El formato en Excel es DD/MM/YYYY
-  const partes = fechaExcel.split('/');
-  if (partes.length !== 3) return null;
+  // Convertir a string en caso de que sea un objeto Date o número
+  let fechaStr = String(fechaExcel).trim();
+  if (!fechaStr || fechaStr === 'undefined' || fechaStr === 'null' || fechaStr.toLowerCase() === '(nulo)') return null;
   
-  // Convertir a formato MySQL YYYY-MM-DD
-  return `${partes[2]}-${partes[1]}-${partes[0]}`;
+  try {
+    // Caso 1: Si ya está en formato MySQL YYYY-MM-DD, devolverlo tal cual
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) {
+      return fechaStr;
+    }
+    
+    // Caso 2: Formato principal DD/MM/YYYY (estándar español)
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(fechaStr)) {
+      const partes = fechaStr.split('/');
+      // Asegurarnos de que es una fecha válida
+      const dia = parseInt(partes[0], 10);
+      const mes = parseInt(partes[1], 10);
+      const año = parseInt(partes[2], 10);
+      
+      if (dia > 0 && dia <= 31 && mes > 0 && mes <= 12 && año > 1900 && año < 2100) {
+        return `${partes[2]}-${partes[1]}-${partes[0]}`;
+      }
+    }
+    
+    // Caso 3: Formato con guiones DD-MM-YYYY
+    if (/^\d{2}-\d{2}-\d{4}$/.test(fechaStr)) {
+      const partes = fechaStr.split('-');
+      return `${partes[2]}-${partes[1]}-${partes[0]}`;
+    }
+    
+    // Caso 4: Último intento con Date() para otros formatos
+    const fecha = new Date(fechaStr);
+    if (!isNaN(fecha.getTime())) {
+      const year = fecha.getFullYear();
+      const month = String(fecha.getMonth() + 1).padStart(2, '0');
+      const day = String(fecha.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Si todas las conversiones fallan, registrar el error y devolver null
+    console.error(`No se pudo convertir la fecha: '${fechaExcel}'`);
+    return null;
+  } catch (error) {
+    console.error(`Error al convertir fecha '${fechaExcel}': ${error.message}`);
+    return null;
+  }
 }
 
-// Función para limpiar y convertir el formato de salario
+// Función mejorada para limpiar y convertir el formato de salario
 function convertirSalario(salarioExcel) {
   if (!salarioExcel) return 0;
   
-  // Eliminar el símbolo B/. y convertir comas a puntos
-  return parseFloat(salarioExcel.replace('B/.', '').replace(',', '.').trim());
+  try {
+    // Convertir a string en caso de que sea otro tipo de dato
+    let salarioStr = String(salarioExcel).trim();
+    console.log(`Procesando salario: '${salarioStr}'`);
+    
+    // Eliminar el símbolo B/.
+    salarioStr = salarioStr.replace('B/.', '');
+    
+    // Detectar el formato del número
+    // Formato español: 1.234,56 (punto como separador de miles, coma como decimal)
+    // Formato americano: 1,234.56 (coma como separador de miles, punto como decimal)
+    
+    // Verificar si tiene formato español (tiene punto antes de coma)
+    const formatoEspanol = salarioStr.includes('.') && salarioStr.includes(',') && 
+                           salarioStr.indexOf('.') < salarioStr.indexOf(',');
+    
+    // Verificar si tiene formato americano (tiene coma antes de punto)
+    const formatoAmericano = salarioStr.includes('.') && salarioStr.includes(',') && 
+                             salarioStr.indexOf(',') < salarioStr.indexOf('.');
+    
+    if (formatoEspanol) {
+      // Es un número con formato español B/.X.XXX,XX
+      // Eliminar todos los puntos (separadores de miles)
+      salarioStr = salarioStr.replace(/\./g, '');
+      // Reemplazar la coma por punto para obtener un número decimal válido
+      salarioStr = salarioStr.replace(',', '.');
+      console.log(`Formato español detectado, convertido a: ${salarioStr}`);
+    } 
+    else if (formatoAmericano) {
+      // Es un número con formato americano B/.X,XXX.XX
+      // Eliminar todas las comas (separadores de miles)
+      salarioStr = salarioStr.replace(/,/g, '');
+      // El punto decimal ya está en formato correcto
+      console.log(`Formato americano detectado, convertido a: ${salarioStr}`);
+    }
+    else if (salarioStr.includes(',') && !salarioStr.includes('.')) {
+      // Solo tiene coma como separador decimal (formato europeo sin miles)
+      salarioStr = salarioStr.replace(',', '.');
+      console.log(`Formato decimal con coma detectado, convertido a: ${salarioStr}`);
+    }
+    // Si solo tiene punto como separador decimal, ya está en formato correcto
+    
+    // Convertir a número y verificar si es válido
+    const salarioNum = parseFloat(salarioStr);
+    console.log(`Salario convertido final: ${salarioNum}`);
+    
+    if (isNaN(salarioNum)) {
+      console.error(`Error al convertir salario: '${salarioExcel}' no es un valor numérico válido`);
+      return 0;
+    }
+    
+    return salarioNum;
+  } catch (error) {
+    console.error(`Error al procesar salario '${salarioExcel}': ${error.message}`);
+    return 0;
+  }
+}
+
+// Función para convertir la rata por hora
+function convertirRata(rataExcel) {
+  // Usar la misma lógica que convertirSalario pero sin multiplicar por 100
+  return convertirSalario(rataExcel);
+}
+
+// Función para procesar nombres completos
+function procesarNombre(nombreCompleto) {
+  if (!nombreCompleto) {
+    return {
+      nombres: '',
+      nombres2: '',
+      apellidos: '',
+      apellido_materno: '',
+      apenom: ''
+    };
+  }
+  
+  try {
+    // Normalizar el nombre (eliminar espacios extras, convertir a mayúsculas)
+    let nombre = nombreCompleto.trim().toUpperCase();
+    
+    // Inicializar variables
+    let nombres = '';
+    let nombres2 = '';
+    let apellidos = '';
+    let apellido_materno = '';
+    
+    // Verificar si el nombre tiene formato "APELLIDOS, NOMBRES"
+    if (nombre.includes(',')) {
+      const partes = nombre.split(',').map(parte => parte.trim());
+      
+      // La parte antes de la coma son los apellidos
+      const partesApellidos = partes[0].split(' ');
+      if (partesApellidos.length >= 2) {
+        apellidos = partesApellidos[0];
+        apellido_materno = partesApellidos.slice(1).join(' ');
+      } else {
+        apellidos = partes[0];
+      }
+      
+      // La parte después de la coma son los nombres
+      const partesNombres = partes[1].split(' ');
+      if (partesNombres.length >= 2) {
+        nombres = partesNombres[0];
+        nombres2 = partesNombres.slice(1).join(' ');
+      } else {
+        nombres = partes[1];
+      }
+    } else {
+      // Formato "NOMBRES APELLIDOS"
+      const palabras = nombre.split(' ').filter(p => p.trim() !== '');
+      
+      if (palabras.length === 2) {
+        // Un nombre, un apellido
+        nombres = palabras[0];
+        apellidos = palabras[1];
+      } else if (palabras.length === 3) {
+        // Un nombre, dos apellidos o dos nombres, un apellido
+        // Asumimos el caso más común: un nombre, dos apellidos
+        nombres = palabras[0];
+        apellidos = palabras[1];
+        apellido_materno = palabras[2];
+      } else if (palabras.length === 4) {
+        // Dos nombres, dos apellidos
+        nombres = palabras[0];
+        nombres2 = palabras[1];
+        apellidos = palabras[2];
+        apellido_materno = palabras[3];
+      } else if (palabras.length > 4) {
+        // Casos complejos
+        nombres = palabras[0];
+        nombres2 = palabras[1];
+        apellidos = palabras[2];
+        apellido_materno = palabras.slice(3).join(' ');
+      } else {
+        // Un solo nombre o apellido
+        nombres = nombre;
+      }
+    }
+    
+    // Formar el apenom en el formato requerido
+    let apenom = nombre;
+    
+    // Retornar el resultado
+    return {
+      nombres,
+      nombres2,
+      apellidos,
+      apellido_materno,
+      apenom
+    };
+  } catch (error) {
+    console.error(`Error al procesar nombre '${nombreCompleto}': ${error.message}`);
+    return {
+      nombres: '',
+      nombres2: '',
+      apellidos: '',
+      apellido_materno: '',
+      apenom: nombreCompleto || ''
+    };
+  }
 }
 
 // Función para obtener el código de categoría basado en el tipo de empleado
 function obtenerCodCat(tipoEmpleado) {
   if (!tipoEmpleado) return null;
   
-  const tipo = tipoEmpleado.toString().toUpperCase().trim();
+  const tipo = String(tipoEmpleado).toUpperCase().trim();
   
   if (tipo.includes('SINDICATO')) return 1;
   if (tipo.includes('GERENTE') || tipo.includes('ADMINISTRATIVO')) return 2;
@@ -64,7 +261,7 @@ async function buscarCodCargo(connection, descripcionCargo) {
   try {
     const [rows] = await connection.execute(
       'SELECT cod_car FROM nomcargos WHERE des_car = ?',
-      [descripcionCargo.trim()]
+      [String(descripcionCargo).trim()]
     );
     
     if (rows.length > 0) {
@@ -83,7 +280,7 @@ async function buscarCodNivel1(connection, unidadAdministrativa) {
   
   try {
     // Eliminar espacios extras y buscar
-    const unidadLimpia = unidadAdministrativa.trim();
+    const unidadLimpia = String(unidadAdministrativa).trim();
     
     const [rows] = await connection.execute(
       'SELECT codorg FROM nomnivel1 WHERE TRIM(descrip) = ?',
@@ -104,7 +301,7 @@ async function buscarCodNivel1(connection, unidadAdministrativa) {
 function convertirEstadoCivil(estadoCivilExcel) {
   if (!estadoCivilExcel) return null;
   
-  const estado = estadoCivilExcel.toString().trim().toLowerCase();
+  const estado = String(estadoCivilExcel).trim().toLowerCase();
   
   if (estado.includes('soltero')) return 'Soltero/a';
   if (estado.includes('casado')) return 'Casado/a';
@@ -112,17 +309,6 @@ function convertirEstadoCivil(estadoCivilExcel) {
   if (estado.includes('unido') || estado.includes('viudo')) return 'Unido';
   
   return estadoCivilExcel;
-}
-
-// Función para verificar si un registro debería procesarse (es un egresado)
-function esEgresado(fila) {
-  if (!fila || !fila['Estado']) return false;
-  
-  // Convertir a string en caso de que sea otro tipo de dato
-  const estado = String(fila['Estado']);
-  
-  // Verificar si contiene "R" o "Retirado" en cualquier formato
-  return estado.includes('R') && estado.includes('Retirado');
 }
 
 // Función principal
@@ -148,9 +334,9 @@ async function main() {
     // Leer el archivo Excel con opciones específicas para garantizar mejor compatibilidad
     const workbook = XLSX.readFile(archivoExcel, {
       type: 'binary',
-      cellDates: true,
+      cellDates: false,  // NO convertir fechas automáticamente
       cellNF: false,
-      cellText: false
+      cellText: true,    // Obtener todas las celdas como texto
     });
     
     const primerHoja = workbook.SheetNames[0];
@@ -160,10 +346,11 @@ async function main() {
     
     // Convertir a JSON, especificando que la cabecera está en la línea 7 (índice 6 base 0)
     const data = XLSX.utils.sheet_to_json(worksheet, {
-      raw: false,
+      raw: false,      // Para obtener strings y no valores "crudos"
       defval: '',
       header: 'A',
-      range: 6  // Empezar desde la línea 7 (índice 6 base 0)
+      range: 6,        // Empezar desde la línea 7 (índice 6 base 0)
+      blankrows: false  // Ignorar filas vacías
     });
     
     // Identificar las cabeceras
@@ -191,6 +378,8 @@ async function main() {
     
     // Encontrar el índice de cada columna
     for (const [key, value] of Object.entries(cabeceras)) {
+      if (!value) continue; // Saltar columnas vacías
+      
       const valorLower = String(value).toLowerCase().trim();
       
       if (valorLower.includes('estado') && !valorLower.includes('civil')) {
@@ -236,13 +425,58 @@ async function main() {
     console.log(`\nColumnas identificadas:`);
     console.log(`Estado: ${colEstado}`);
     console.log(`Empleado: ${colEmpleado}`);
+    console.log(`Nombre: ${colNombre}`);
+    console.log(`Fecha Retiro: ${colFechaRetiro}`);
+    console.log(`Salario: ${colSalario}`);
+    console.log(`Rata: ${colRata}`);
     
-    // Mostrar algunos ejemplos de datos
+    // Mostrar algunos ejemplos de datos para verificación
     console.log(`\nEjemplos de datos (primeras 3 filas):`);
     for (let i = 0; i < Math.min(3, dataSinCabeceras.length); i++) {
       console.log(`Fila ${i+1}:`);
       console.log(`  Estado: '${dataSinCabeceras[i][colEstado]}'`);
       console.log(`  Empleado: '${dataSinCabeceras[i][colEmpleado]}'`);
+      
+      if (colNombre) {
+        const nombreOriginal = dataSinCabeceras[i][colNombre];
+        const nombreProcesado = procesarNombre(nombreOriginal);
+        console.log(`  Nombre Original: '${nombreOriginal}'`);
+        console.log(`  Nombre Procesado: `);
+        console.log(`    nombres: '${nombreProcesado.nombres}'`);
+        console.log(`    nombres2: '${nombreProcesado.nombres2}'`);
+        console.log(`    apellidos: '${nombreProcesado.apellidos}'`);
+        console.log(`    apellido_materno: '${nombreProcesado.apellido_materno}'`);
+        console.log(`    apenom: '${nombreProcesado.apenom}'`);
+      }
+      
+      if (colFechaRetiro) {
+        const fechaRetiroOriginal = dataSinCabeceras[i][colFechaRetiro];
+        const fechaRetiroConvertida = convertirFecha(fechaRetiroOriginal);
+        console.log(`  Fecha Retiro Original: '${fechaRetiroOriginal}'`);
+        console.log(`  Fecha Retiro Convertida: '${fechaRetiroConvertida}'`);
+      }
+      
+      if (colSalario) {
+        const salarioOriginal = dataSinCabeceras[i][colSalario];
+        const salarioConvertido = convertirSalario(salarioOriginal);
+        console.log(`  Salario Original: '${salarioOriginal}'`);
+        console.log(`  Salario Convertido: ${salarioConvertido}`);
+      }
+      
+      if (colRata) {
+        const rataOriginal = dataSinCabeceras[i][colRata];
+        const rataConvertida = convertirRata(rataOriginal);
+        console.log(`  Rata Original: '${rataOriginal}'`);
+        console.log(`  Rata Convertida: ${rataConvertida}`);
+      }
+    }
+    
+    // Solicitar confirmación para continuar
+    const confirmacion = prompt('\n¿Los datos se ven correctos? ¿Desea continuar? (s/n): ');
+    if (confirmacion.toLowerCase() !== 's') {
+      console.log('Proceso cancelado por el usuario.');
+      await connection.end();
+      return;
     }
     
     // Contador para estadísticas
@@ -268,23 +502,45 @@ async function main() {
           continue;
         }
         
+        // Procesar el nombre completo
+        const nombreInfo = procesarNombre(fila[colNombre]);
+        
+        // Obtener y convertir la fecha de retiro
+        let fechaRetiro = null;
+        if (colFechaRetiro) {
+          const fechaRetiroOriginal = fila[colFechaRetiro];
+          if (!fechaRetiroOriginal || String(fechaRetiroOriginal).toLowerCase() === '(nulo)') {
+            fechaRetiro = null;
+          } else {
+            fechaRetiro = convertirFecha(fechaRetiroOriginal);
+          }
+        }
+        
+        // Convertir salario y rata por hora
+        const salario = convertirSalario(fila[colSalario]);
+        const rataPorHora = convertirRata(fila[colRata]);
+        
         // Mostrar que se está procesando este empleado
-        console.log(`Procesando egresado: ${ficha} - Estado: '${estadoValor}'`);
+        console.log(`Procesando egresado: ${ficha} - Nombre: '${nombreInfo.apenom}' - Salario: ${salario}`);
         
         // Preparar los datos para la inserción/actualización
         const datosEmpleado = {
           ficha: ficha,
           estado: 'Egresado', // Valor en nompersonal para egresados
-          apenom: fila[colNombre] || '',
+          apenom: nombreInfo.apenom,
+          nombres: nombreInfo.nombres,
+          nombres2: nombreInfo.nombres2,
+          apellidos: nombreInfo.apellidos,
+          apellido_materno: nombreInfo.apellido_materno,
           sexo: colSexo ? (String(fila[colSexo] || '').includes('Masculino') ? 'Masculino' : 'Femenino') : '',
           estado_civil: colEstadoCivil ? convertirEstadoCivil(fila[colEstadoCivil]) : '',
           direccion: colDireccion ? (fila[colDireccion] || '') : '',
           fecnac: colFechaNac ? convertirFecha(fila[colFechaNac]) : null,
           fecing: colFechaIng ? convertirFecha(fila[colFechaIng]) : null,
-          fecharetiro: colFechaRetiro ? convertirFecha(fila[colFechaRetiro]) : null,
-          suesal: colSalario ? convertirSalario(fila[colSalario]) : 0,
-          sueldopro: colSalario ? convertirSalario(fila[colSalario]) : 0,
-          hora_base: colRata ? convertirSalario(fila[colRata]) : 0,
+          fecharetiro: fechaRetiro,
+          suesal: salario,
+          sueldopro: salario,
+          hora_base: rataPorHora,
           codcat: colTipoEmpleado ? obtenerCodCat(fila[colTipoEmpleado]) : 2
         };
         
